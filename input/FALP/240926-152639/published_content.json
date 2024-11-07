@@ -1,0 +1,99 @@
+{
+    "all_media": [],
+    "original_files": [
+        {
+            "url": "/pictures/240926-152639/original/0001.jpg",
+            "thumb": "/pictures/240926-152639/original/0001.jpg",
+            "camera_index": 1
+        },
+        {
+            "url": "/pictures/240926-152639/original/0002.jpg",
+            "thumb": "/pictures/240926-152639/original/0002.jpg",
+            "camera_index": 2
+        },
+        {
+            "url": "/pictures/240926-152639/original/0003.jpg",
+            "thumb": "/pictures/240926-152639/original/0003.jpg",
+            "camera_index": 3
+        }
+    ],
+    "aligned_files": [],
+    "raw_files": [],
+    "mp4_files": [],
+    "gif_files": [],
+    "preview_files": [],
+    "frame_files": [],
+    "thumbs_files": [
+        {
+            "url": "/pictures/240926-152639/thumbs/0001_0007.jpg.thumb.jpg",
+            "thumb": "/pictures/240926-152639/thumbs/0001_0007.jpg.thumb.jpg"
+        },
+        {
+            "url": "/pictures/240926-152639/thumbs/0002_0007.jpg.thumb.jpg",
+            "thumb": "/pictures/240926-152639/thumbs/0002_0007.jpg.thumb.jpg"
+        },
+        {
+            "url": "/pictures/240926-152639/thumbs/0003_0007.jpg.thumb.jpg",
+            "thumb": "/pictures/240926-152639/thumbs/0003_0007.jpg.thumb.jpg"
+        }
+    ],
+    "small_thumbs_files": [
+        {
+            "url": "/pictures/240926-152639/thumbs/0001_0007.jpg.thumb.small.jpg",
+            "thumb": "/pictures/240926-152639/thumbs/0001_0007.jpg.thumb.small.jpg"
+        },
+        {
+            "url": "/pictures/240926-152639/thumbs/0002_0007.jpg.thumb.small.jpg",
+            "thumb": "/pictures/240926-152639/thumbs/0002_0007.jpg.thumb.small.jpg"
+        },
+        {
+            "url": "/pictures/240926-152639/thumbs/0003_0007.jpg.thumb.small.jpg",
+            "thumb": "/pictures/240926-152639/thumbs/0003_0007.jpg.thumb.small.jpg"
+        }
+    ],
+    "original_movies": [],
+    "interpolated_files": [],
+    "wiggle_files": [],
+    "calibration_file": "",
+    "asset_collection": "default",
+    "show_in_gallery": true,
+    "settings_summary": "",
+    "output_settings": {
+        "resolution": "720x480",
+        "aspect_ratio": "3:2",
+        "output_fps": 12,
+        "repeat": 1,
+        "bounce": true,
+        "trigger_mode": "Freeze",
+        "trigger_delay": 0
+    },
+    "performance": {
+        "durations": {
+            "trigger_duration": 316.6666666666667,
+            "file_transfer_duration": 4264.7112,
+            "extract_raw_duration": 0.1608,
+            "check_files_duration": 0.6634,
+            "wiggle_duration": 0.096,
+            "input_transform_duration": 696.1206999999999,
+            "recalibrate_duration": 0.4053,
+            "apply_calibration_duration": 0.4314,
+            "flowframes_interpolation_duration": 0.095,
+            "apply_chromakey_duration": 0.10389999999999999,
+            "prepare_movie_duration": 17.9372,
+            "generate_movie_duration": 335.10929999999996,
+            "extract_movie_thumb_duration": 836.9723,
+            "backup_duration": 0.0987,
+            "process_duration": 1915.3415,
+            "total_duration": 6506.093699999999
+        },
+        "downloaded_size": 22587090,
+        "transfer_rate": 5296276.568504803,
+        "process_duration": null,
+        "total_duration": null
+    },
+    "expected_picture_count": 3,
+    "iterations": 1,
+    "expected_cameras": 3,
+    "timestamp": "240926-152639",
+    "sequence_number": 126
+}

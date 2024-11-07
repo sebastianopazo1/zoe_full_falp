@@ -1,0 +1,72 @@
+{
+    "all_media": [],
+    "original_files": [
+        {
+            "url": "/pictures/240924-180202/original/0001.jpg",
+            "thumb": "/pictures/240924-180202/original/0001.jpg",
+            "camera_index": 1
+        },
+        {
+            "url": "/pictures/240924-180202/original/0002.jpg",
+            "thumb": "/pictures/240924-180202/original/0002.jpg",
+            "camera_index": 2
+        },
+        {
+            "url": "/pictures/240924-180202/original/0003.jpg",
+            "thumb": "/pictures/240924-180202/original/0003.jpg",
+            "camera_index": 3
+        }
+    ],
+    "aligned_files": [],
+    "raw_files": [],
+    "mp4_files": [],
+    "gif_files": [],
+    "preview_files": [],
+    "frame_files": [],
+    "thumbs_files": [],
+    "small_thumbs_files": [],
+    "original_movies": [],
+    "interpolated_files": [],
+    "wiggle_files": [],
+    "calibration_file": "",
+    "show_in_gallery": true,
+    "settings_summary": "",
+    "output_settings": {
+        "resolution": "3240x2160",
+        "aspect_ratio": "3:2",
+        "output_fps": 12,
+        "repeat": 1,
+        "bounce": true,
+        "trigger_mode": "Freeze",
+        "trigger_delay": 0
+    },
+    "performance": {
+        "durations": {
+            "trigger_duration": 316.6666666666667,
+            "file_transfer_duration": 4482.074,
+            "extract_raw_duration": 0.5009,
+            "check_files_duration": 0.9450999999999999,
+            "wiggle_duration": 0.143,
+            "input_transform_duration": 0.0959,
+            "recalibrate_duration": 0.1608,
+            "apply_calibration_duration": 0.161,
+            "flowframes_interpolation_duration": 0.0905,
+            "apply_chromakey_duration": 0.1688,
+            "prepare_movie_duration": 1.2073,
+            "generate_movie_duration": 0.1172,
+            "extract_movie_thumb_duration": 0.0535,
+            "backup_duration": 0.0070999999999999995,
+            "process_duration": 10.0704,
+            "total_duration": 4821.8097
+        },
+        "downloaded_size": 23421158,
+        "transfer_rate": 5225517.918713524,
+        "process_duration": null,
+        "total_duration": null
+    },
+    "expected_picture_count": 3,
+    "iterations": 1,
+    "expected_cameras": 3,
+    "timestamp": "240924-180202",
+    "sequence_number": 152
+}
