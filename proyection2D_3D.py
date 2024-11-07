@@ -16,34 +16,46 @@ def process_image(image_path, model_name="zoedepth"):
     model = build_model(conf).to(DEVICE)
     model.eval()
 
-    #procesar la imagen
+    # Procesar imagen
     img = Image.open(image_path).convert("RGB")
     img_np = np.array(img)
 
     with torch.no_grad():
         depth = model.infer_pil(img)
+        
     points_3d = depth_to_points(depth[None])
+    
+    # Configurar visualizador con soporte GPU
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(width=1280, height=720)
+    
+    # Crear nube de puntos
     pcd = o3d.geometry.PointCloud()
     points = points_3d.reshape(-1, 3)
     colors = img_np.reshape(-1, 3) / 255.0
 
-    pcd.points = o3d.utility.Vector3dVector(points)
-    #pcd.colors = o3d.utility.Vector3dVector(colors)
+    # Optimizar datos para GPU 
+    pcd.points = o3d.utility.Vector3dVector(points.astype(np.float32))
+    pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float32))
     
-    # Create coordinate frame
+    # Configurar opciones de renderizado
+    opt = vis.get_render_option()
+    opt.point_size = 1.0
+    opt.background_color = np.asarray([0, 0, 0])
+    opt.use_gpu = True # Activar renderizado por GPU
+    
+    # Crear marco de coordenadas
     coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
     
-    # Visualize
-    print("\nControles de visualización:")
-    print("- Rotar: Click izquierdo + arrastrar")
-    print("- Zoom: Scroll del ratón")
-    print("- Pan: Click derecho + arrastrar")
-    print("- Salir: Q")
-    
-    o3d.visualization.draw_geometries([pcd, coord_frame])
+    # Agregar geometrías
+    vis.add_geometry(pcd)
+    vis.add_geometry(coord_frame)
+    # Ejecutar visualizador
+    vis.run()
+    vis.destroy_window()
 
 def main():
-    parser = argparse.ArgumentParser(description='Depth to 3D Point Cloud Visualization')
+    parser = argparse.ArgumentParser(description='Visualizacion de puntos 3D en base a la profundidad')
     parser.add_argument('--image', '-i', 
                         required=True,
                         help='Path to input image')
