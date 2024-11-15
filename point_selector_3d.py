@@ -10,8 +10,10 @@ import cv2
 def select_points(image_path):
     """Allow user to select points on the image and return their coordinates"""
     original_img = cv2.imread(image_path)
-    height, width = original_img.shape[:2]
+    if original_img is None:
+        raise FileNotFoundError(f"No se encontro la imagen en {image_path}.")
     
+    height, width = original_img.shape[:2]
     max_dimension = 800
     scale = min(max_dimension/width, max_dimension/height)
     new_width = int(width * scale)
@@ -32,7 +34,7 @@ def select_points(image_path):
     cv2.imshow('Image', img)
     cv2.setMouseCallback('Image', mouse_callback)
     
-    print("Select points on the image (press 'q' when done)")
+    print("Selecciona los puntos en la imagen (Apretar 'q' cuando termine)")
     while True:
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
@@ -57,10 +59,16 @@ def process_image_with_points(image_path, model_name="zoedepth"):
         depth = model.infer_pil(img)
     
     points_3d = depth_to_points(depth[None])
-    
+
+    pcd = o3d.geometry.PointCloud()
+    points = points_3d.reshape(-1, 3)
+    colors = img_np.reshape(-1, 3) / 255.0
+    pcd.points = o3d.utility.Vector3dVector(points.astype(np.float32))
+    pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float32))
+  
     highlighted_points = []
     for x, y in points_2d:
-        idx = y * img_shape[1] + x  
+        idx = y * img_shape[1] + x
         point_3d = points_3d.reshape(-1, 3)[idx]
         highlighted_points.append(point_3d)
     
@@ -68,18 +76,27 @@ def process_image_with_points(image_path, model_name="zoedepth"):
         vis = o3d.visualization.Visualizer()
         vis.create_window(width=1280, height=720)
         
+        vis.add_geometry(pcd)
+        
         highlighted_pcd = o3d.geometry.PointCloud()
         highlighted_pcd.points = o3d.utility.Vector3dVector(np.array(highlighted_points))
-        highlighted_colors = np.array([[1, 0, 0] for _ in highlighted_points])  # Red color
+        highlighted_colors = np.array([[1, 0, 0] for _ in highlighted_points])  #
         highlighted_pcd.colors = o3d.utility.Vector3dVector(highlighted_colors)
-
+     
         opt = vis.get_render_option()
-        opt.point_size = 5.0
+        opt.point_size = 1.0  #Tamaño
         opt.background_color = np.asarray([0, 0, 0])
         
         vis.add_geometry(highlighted_pcd)
+        
+        for i in range(len(highlighted_points)):
+            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
+            sphere.translate(highlighted_points[i])
+            sphere.paint_uniform_color([1, 0, 0])  # Rojo
+            vis.add_geometry(sphere)
         coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
         vis.add_geometry(coord_frame)
+        
         vis.run()
         vis.destroy_window()
 
