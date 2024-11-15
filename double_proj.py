@@ -1,4 +1,3 @@
-
 import torch
 from PIL import Image
 import numpy as np
@@ -17,19 +16,9 @@ def process_two_cameras(image_path1, image_path2, model_name="zoedepth"):
     model = build_model(conf).to(DEVICE)
     model.eval()
 
-    # Parámetros intrínsecos de la cámara (ajustar según tu cámara)
-    fx = 525.0  # distancia focal x
-    fy = 525.0  # distancia focal y
-    cx = 319.5  # centro óptico x
-    cy = 239.5  # centro óptico y
-    
-    K = np.array([[fx, 0, cx],
-                  [0, fy, cy],
-                  [0, 0, 1]])
-
     # Matriz de transformación para la segunda cámara (38cm abajo)
     T_2to1 = np.array([[1, 0, 0, 0],
-                       [0, 1, 0, 0.38],
+                       [0, 1, 0, -0.38],
                        [0, 0, 1, 0],
                        [0, 0, 0, 1]])
 
@@ -45,33 +34,17 @@ def process_two_cameras(image_path1, image_path2, model_name="zoedepth"):
         depth2 = model.infer_pil(img2)
         img_np2 = np.array(img2)
 
-    # Crear nubes de puntos
-    def depth_to_points_with_K(depth_map, K, color_img):
-        h, w = depth_map.shape
-        y, x = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
-        
-        # Coordenadas homogéneas
-        x_homo = (x - K[0,2]) / K[0,0]
-        y_homo = (y - K[1,2]) / K[1,1]
-        
-        points = np.stack([
-            x_homo * depth_map,
-            y_homo * depth_map,
-            depth_map,
-            np.ones_like(depth_map)
-        ], axis=-1)
-        
-        points = points.reshape(-1, 4)
-        colors = color_img.reshape(-1, 3) / 255.0
-        
-        return points, colors
+    # Generar nubes de puntos usando depth_to_points
+    points1 = depth_to_points(depth1[None])  # [B, H, W, 3]
+    points2 = depth_to_points(depth2[None])  # [B, H, W, 3]
 
-    # Generar nubes de puntos
-    points1, colors1 = depth_to_points_with_K(depth1, K, img_np1)
-    points2, colors2 = depth_to_points_with_K(depth2, K, img_np2)
-    
+    # Aplanar los puntos
+    points1_flat = points1.reshape(-1, 3)
+    points2_flat = points2.reshape(-1, 3)
+
     # Transformar puntos de cámara 2 al sistema de coordenadas de cámara 1
-    #points2 = (T_2to1 @ points2.T).T
+    points2_homogeneous = np.concatenate([points2_flat, np.ones((points2_flat.shape[0], 1))], axis=1)
+    points2_transformed = (T_2to1 @ points2_homogeneous.T).T[:, :3]
 
     # Visualización
     vis = o3d.visualization.Visualizer()
@@ -79,19 +52,23 @@ def process_two_cameras(image_path1, image_path2, model_name="zoedepth"):
 
     # Nube de puntos 1
     pcd1 = o3d.geometry.PointCloud()
-    pcd1.points = o3d.utility.Vector3dVector(points1[:, :3].astype(np.float32))
-    pcd1.colors = o3d.utility.Vector3dVector(colors1.astype(np.float32))
+    pcd1.points = o3d.utility.Vector3dVector(points1_flat.astype(np.float32))
+    pcd1.colors = o3d.utility.Vector3dVector((img_np1.reshape(-1, 3) / 255.0).astype(np.float32))
     vis.add_geometry(pcd1)
 
     # Nube de puntos 2
     pcd2 = o3d.geometry.PointCloud()
-    pcd2.points = o3d.utility.Vector3dVector(points2[:, :3].astype(np.float32))
-    pcd2.colors = o3d.utility.Vector3dVector(colors2.astype(np.float32))
+    pcd2.points = o3d.utility.Vector3dVector(points2_transformed.astype(np.float32))
+    pcd2.colors = o3d.utility.Vector3dVector((img_np2.reshape(-1, 3) / 255.0).astype(np.float32))
     vis.add_geometry(pcd2)
 
-    # Sistema de coordenadas
-    coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-    vis.add_geometry(coord_frame)
+    # Añadir sistemas de coordenadas para ambas cámaras
+    coord_frame1 = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+    vis.add_geometry(coord_frame1)
+
+    coord_frame2 = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+    coord_frame2.transform(T_2to1)
+    vis.add_geometry(coord_frame2)
 
     # Configuración de visualización
     opt = vis.get_render_option()

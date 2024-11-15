@@ -76,26 +76,51 @@ def process_image_with_points(image_path, model_name="zoedepth"):
         vis = o3d.visualization.Visualizer()
         vis.create_window(width=1280, height=720)
         
+        # Añadir la nube de puntos principal
         vis.add_geometry(pcd)
         
+        # Añadir los puntos destacados
         highlighted_pcd = o3d.geometry.PointCloud()
         highlighted_pcd.points = o3d.utility.Vector3dVector(np.array(highlighted_points))
-        highlighted_colors = np.array([[1, 0, 0] for _ in highlighted_points])  #
+        highlighted_colors = np.array([[1, 0, 0] for _ in highlighted_points])
         highlighted_pcd.colors = o3d.utility.Vector3dVector(highlighted_colors)
-     
-        opt = vis.get_render_option()
-        opt.point_size = 1.0  #Tamaño
-        opt.background_color = np.asarray([0, 0, 0])
-        
         vis.add_geometry(highlighted_pcd)
         
+        # Añadir esferas rojas para los puntos seleccionados
         for i in range(len(highlighted_points)):
             sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
             sphere.translate(highlighted_points[i])
-            sphere.paint_uniform_color([1, 0, 0])  # Rojo
+            sphere.paint_uniform_color([1, 0, 0])
             vis.add_geometry(sphere)
-        coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
-        vis.add_geometry(coord_frame)
+        
+        # Añadir visualización de la cámara
+        # 1. Sistema de coordenadas de la cámara
+        camera_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
+        vis.add_geometry(camera_frame)
+        
+        # 2. Esfera para marcar posición de la cámara
+        camera_pos = o3d.geometry.TriangleMesh.create_sphere(radius=0.05)
+        camera_pos.paint_uniform_color([0, 1, 0])  # Verde para la cámara
+        vis.add_geometry(camera_pos)
+        
+        # 3. Crear un cono para representar la dirección de la cámara
+        camera_direction = o3d.geometry.TriangleMesh.create_cone(radius=0.05, height=0.1)
+        # Rotar el cono para que apunte en la dirección Z
+        R = camera_direction.get_rotation_matrix_from_xyz((0, np.pi/2, 0))
+        camera_direction.rotate(R, center=(0, 0, 0))
+        camera_direction.paint_uniform_color([0, 0, 1])  # Azul para la dirección
+        vis.add_geometry(camera_direction)
+        
+        # Configurar opciones de renderizado
+        opt = vis.get_render_option()
+        opt.point_size = 1.0
+        opt.background_color = np.asarray([0, 0, 0])
+        
+        # Configurar la vista inicial
+        ctr = vis.get_view_control()
+        ctr.set_zoom(0.3)
+        ctr.set_front([0, 0, -1])
+        ctr.set_up([0, -1, 0])
         
         vis.run()
         vis.destroy_window()
