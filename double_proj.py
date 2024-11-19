@@ -7,74 +7,81 @@ from zoedepth.utils.geometry import depth_to_points
 import open3d as o3d
 import cv2
 
+def resize_image(image, max_size=(1024, 1024)):
+    """
+    Redimensiona la imagen manteniendo la proporción hasta que su lado más largo sea max_size.
+    """
+    image.thumbnail(max_size, Image.ANTIALIAS)
+    return image
+
 def process_two_cameras(image_path1, image_path2, model_name="zoedepth"):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {DEVICE}")
+    print(f"Using device for model inference: {DEVICE}")
 
     # Inicializar modelo
     conf = get_config(model_name, "infer")
     model = build_model(conf).to(DEVICE)
     model.eval()
 
-    # Matriz de transformación para la segunda cámara (38cm abajo)
-    T_2to1 = np.array([[1, 0, 0, 0],
-                       [0, 1, 0, -0.38],
-                       [0, 0, 1, 0],
-                       [0, 0, 0, 1]])
+    T_cam1_world = np.eye(4)
+    T_cam2_world = np.array([[1, 0, 0, 0],
+                             [0, 1, 0, -0.38],
+                             [0, 0, 1, 0],
+                             [0, 0, 0, 1]])
 
-    # Procesar imágenes
     with torch.no_grad():
-        # Cámara 1 (origen)
+        # Cargar y redimensionar 
         img1 = Image.open(image_path1).convert("RGB")
+        img1 = resize_image(img1, max_size=(1024, 1024))  
         depth1 = model.infer_pil(img1)
         img_np1 = np.array(img1)
-        
-        # Cámara 2 (38cm abajo)
+
         img2 = Image.open(image_path2).convert("RGB")
+        img2 = resize_image(img2, max_size=(1024, 1024))  
         depth2 = model.infer_pil(img2)
         img_np2 = np.array(img2)
 
-    # Generar nubes de puntos usando depth_to_points
     points1 = depth_to_points(depth1[None])  # [B, H, W, 3]
     points2 = depth_to_points(depth2[None])  # [B, H, W, 3]
 
-    # Aplanar los puntos
     points1_flat = points1.reshape(-1, 3)
     points2_flat = points2.reshape(-1, 3)
 
-    # Transformar puntos de cámara 2 al sistema de coordenadas de cámara 1
+    # Transformar puntos al sistema de coordenadas mundial
+    points1_homogeneous = np.concatenate([points1_flat, np.ones((points1_flat.shape[0], 1))], axis=1)
+    points1_world = (T_cam1_world @ points1_homogeneous.T).T[:, :3]
     points2_homogeneous = np.concatenate([points2_flat, np.ones((points2_flat.shape[0], 1))], axis=1)
-    points2_transformed = (T_2to1 @ points2_homogeneous.T).T[:, :3]
+    points2_world = (T_cam2_world @ points2_homogeneous.T).T[:, :3]
 
-    # Visualización
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(width=1280, height=720)
-
+    # Crear nubes de puntos en CPU
     # Nube de puntos 1
     pcd1 = o3d.geometry.PointCloud()
-    pcd1.points = o3d.utility.Vector3dVector(points1_flat.astype(np.float32))
-    pcd1.colors = o3d.utility.Vector3dVector((img_np1.reshape(-1, 3) / 255.0).astype(np.float32))
-    vis.add_geometry(pcd1)
+    pcd1.points = o3d.utility.Vector3dVector(points1_world.astype(np.float32))
+    colors1 = (img_np1.reshape(-1, 3) / 255.0).astype(np.float32)
+    pcd1.colors = o3d.utility.Vector3dVector(colors1)
 
     # Nube de puntos 2
     pcd2 = o3d.geometry.PointCloud()
-    pcd2.points = o3d.utility.Vector3dVector(points2_transformed.astype(np.float32))
-    pcd2.colors = o3d.utility.Vector3dVector((img_np2.reshape(-1, 3) / 255.0).astype(np.float32))
+    pcd2.points = o3d.utility.Vector3dVector(points2_world.astype(np.float32))
+    colors2 = (img_np2.reshape(-1, 3) / 255.0).astype(np.float32)
+    pcd2.colors = o3d.utility.Vector3dVector(colors2)
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(width=1280, height=720)
+
+    vis.add_geometry(pcd1)
     vis.add_geometry(pcd2)
 
-    # Añadir sistemas de coordenadas para ambas cámaras
+
     coord_frame1 = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
     vis.add_geometry(coord_frame1)
 
     coord_frame2 = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-    coord_frame2.transform(T_2to1)
+    coord_frame2.transform(T_cam2_world)
     vis.add_geometry(coord_frame2)
 
-    # Configuración de visualización
     opt = vis.get_render_option()
     opt.point_size = 1.0
     opt.background_color = np.asarray([0, 0, 0])
-
     vis.run()
     vis.destroy_window()
 
