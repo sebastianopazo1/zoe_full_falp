@@ -8,21 +8,21 @@ import open3d as o3d
 import cv2
 
 def select_points(image_path):
-    """Allow user to select points on the image and return their coordinates"""
+    """Permite al usuario seleccionar puntos en la imagen y devuelve sus coordenadas."""
     original_img = cv2.imread(image_path)
     if original_img is None:
-        raise FileNotFoundError(f"No se encontro la imagen en {image_path}.")
-    
+        raise FileNotFoundError(f"No se encontró la imagen en {image_path}.")
+
     height, width = original_img.shape[:2]
     max_dimension = 800
     scale = min(max_dimension/width, max_dimension/height)
     new_width = int(width * scale)
     new_height = int(height * scale)
-    
+
     img = cv2.resize(original_img, (new_width, new_height))
     points = []
     scale_factor = (width/new_width, height/new_height)
-    
+
     def mouse_callback(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             original_x = int(x * scale_factor[0])
@@ -30,22 +30,22 @@ def select_points(image_path):
             points.append((original_x, original_y))
             cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
             cv2.imshow('Image', img)
-    
+
     cv2.imshow('Image', img)
     cv2.setMouseCallback('Image', mouse_callback)
-    
+
     print("Selecciona los puntos en la imagen (Apretar 'q' cuando termine)")
     while True:
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
-    
+
     cv2.destroyAllWindows()
     return points, original_img.shape[:2]
 
 def process_image_with_points(image_path, model_name="zoedepth"):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {DEVICE}")
+    print(f"Usando dispositivo: {DEVICE}")
 
     conf = get_config(model_name, "infer")
     model = build_model(conf).to(DEVICE)
@@ -60,73 +60,62 @@ def process_image_with_points(image_path, model_name="zoedepth"):
     
     points_3d = depth_to_points(depth[None])
 
-    pcd = o3d.geometry.PointCloud()
+    # Crear nube de puntos
     points = points_3d.reshape(-1, 3)
     colors = img_np.reshape(-1, 3) / 255.0
-    pcd.points = o3d.utility.Vector3dVector(points.astype(np.float32))
-    pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float32))
-  
+
     highlighted_points = []
     for x, y in points_2d:
         idx = y * img_shape[1] + x
         point_3d = points_3d.reshape(-1, 3)[idx]
         highlighted_points.append(point_3d)
     
-    
-    if highlighted_points:
-        # Crear visualizador con las mismas dimensiones que double_proj.py
-        vis = o3d.visualization.Visualizer()
-        vis.create_window(width=1280, height=720)
-        
-        # Configuración del render igual que en double_proj.py
-        opt = vis.get_render_option()
-        opt.point_size = 1.0
-        opt.background_color = np.asarray([0, 0, 0])
+    # Visualización con Open3D utilizando el nuevo renderizador basado en GPU
+    visualize_point_cloud(points, colors, highlighted_points)
 
-        # Añadir la nube de puntos principal
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points.astype(np.float32))
-        pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float32))
-        vis.add_geometry(pcd)
-        
-        # Añadir los puntos destacados
-        highlighted_pcd = o3d.geometry.PointCloud()
-        highlighted_pcd.points = o3d.utility.Vector3dVector(np.array(highlighted_points))
-        highlighted_colors = np.array([[1, 0, 0] for _ in highlighted_points])
-        highlighted_pcd.colors = o3d.utility.Vector3dVector(highlighted_colors)
-        vis.add_geometry(highlighted_pcd)
-        
-        # Añadir esferas rojas para los puntos seleccionados
-        for point in highlighted_points:
-            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
-            sphere.translate(point)
-            sphere.paint_uniform_color([1, 0, 0])
-            vis.add_geometry(sphere)
-        
-        # Sistema de coordenadas de la cámara
-        coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3)
-        vis.add_geometry(coord_frame)
-        
-        # Esfera para la posición de la cámara
-        camera_pos = o3d.geometry.TriangleMesh.create_sphere(radius=0.05)
-        camera_pos.paint_uniform_color([0, 1, 0])
-        vis.add_geometry(camera_pos)
-        
-        # Cono para la dirección de la cámara
-        camera_direction = o3d.geometry.TriangleMesh.create_cone(radius=0.05, height=0.1)
-        R = camera_direction.get_rotation_matrix_from_xyz((0, np.pi/2, 0))
-        camera_direction.rotate(R, center=(0, 0, 0))
-        camera_direction.paint_uniform_color([0, 0, 1])
-        vis.add_geometry(camera_direction)
+def visualize_point_cloud(points, colors, highlighted_points):
+    # Crear la nube de puntos principal
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points.astype(np.float32))
+    pcd.colors = o3d.utility.Vector3dVector(colors.astype(np.float32))
 
-        vis.run()
-        vis.destroy_window()
+    # Crear la nube de puntos destacada
+    highlighted_pcd = o3d.geometry.PointCloud()
+    highlighted_pcd.points = o3d.utility.Vector3dVector(np.array(highlighted_points))
+    highlighted_colors = np.array([[1, 0, 0] for _ in highlighted_points], dtype=np.float32)
+    highlighted_pcd.colors = o3d.utility.Vector3dVector(highlighted_colors)
+
+    # Iniciar la aplicación de visualización de Open3D
+    app = o3d.visualization.gui.Application.instance
+    app.initialize()
+
+    # Crear una ventana
+    window = app.create_window("Visualización de Nube de Puntos", 1280, 720)
+
+    # Crear un widget de escena
+    scene_widget = o3d.visualization.gui.SceneWidget()
+    scene_widget.scene = o3d.visualization.rendering.Open3DScene(window.renderer)
+    window.add_child(scene_widget)
+
+    # Añadir geometrías a la escena
+    material = o3d.visualization.rendering.MaterialRecord()
+    material.shader = "defaultUnlit"
+
+    scene_widget.scene.add_geometry("PointCloud", pcd, material)
+    scene_widget.scene.add_geometry("HighlightedPoints", highlighted_pcd, material)
+
+    # Configurar cámara
+    bbox = pcd.get_axis_aligned_bounding_box()
+    scene_widget.setup_camera(60, bbox, bbox.get_center())
+
+    # Ejecutar la aplicación
+    app.run()
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description='3D point selection and visualization')
-    parser.add_argument('--image','-i', required=True, help='Input image path')
-    parser.add_argument('--model', '-m', default='zoedepth', help='Model to use')
+    parser = argparse.ArgumentParser(description='Selección y visualización de puntos en 3D')
+    parser.add_argument('--image','-i', required=True, help='Ruta de la imagen de entrada')
+    parser.add_argument('--model', '-m', default='zoedepth', help='Modelo a utilizar')
     
     args = parser.parse_args()
     process_image_with_points(args.image, args.model)
