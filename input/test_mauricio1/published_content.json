@@ -1,0 +1,85 @@
+{
+    "all_media": [],
+    "original_files": [
+        {
+            "url": "/pictures/241129-163225/original/0001.jpg",
+            "thumb": "/pictures/241129-163225/original/0001.jpg",
+            "camera_index": 1
+        },
+        {
+            "url": "/pictures/241129-163225/original/0002.jpg",
+            "thumb": "/pictures/241129-163225/original/0002.jpg",
+            "camera_index": 2
+        },
+        {
+            "url": "/pictures/241129-163225/original/0003.jpg",
+            "thumb": "/pictures/241129-163225/original/0003.jpg",
+            "camera_index": 3
+        }
+    ],
+    "aligned_files": [],
+    "raw_files": [],
+    "mp4_files": [],
+    "gif_files": [],
+    "preview_files": [],
+    "frame_files": [],
+    "thumbs_files": [
+        {
+            "url": "/pictures/241129-163225/thumbs/0001_0002.jpg.thumb.jpg",
+            "thumb": "/pictures/241129-163225/thumbs/0001_0002.jpg.thumb.jpg"
+        },
+        {
+            "url": "/pictures/241129-163225/thumbs/0002_0002.jpg.thumb.jpg",
+            "thumb": "/pictures/241129-163225/thumbs/0002_0002.jpg.thumb.jpg"
+        },
+        {
+            "url": "/pictures/241129-163225/thumbs/0003_0002.jpg.thumb.jpg",
+            "thumb": "/pictures/241129-163225/thumbs/0003_0002.jpg.thumb.jpg"
+        }
+    ],
+    "small_thumbs_files": [],
+    "original_movies": [],
+    "interpolated_files": [],
+    "wiggle_files": [],
+    "calibration_file": "",
+    "show_in_gallery": true,
+    "settings_summary": "",
+    "output_settings": {
+        "resolution": "720x480",
+        "aspect_ratio": "3:2",
+        "output_fps": 12,
+        "repeat": 1,
+        "bounce": true,
+        "trigger_mode": "Freeze",
+        "trigger_delay": 0
+    },
+    "performance": {
+        "durations": {
+            "trigger_duration": 316.6666666666667,
+            "file_transfer_duration": 1306.6213,
+            "extract_raw_duration": 0.1664,
+            "check_files_duration": 1.0423,
+            "wiggle_duration": 0.14429999999999998,
+            "input_transform_duration": 0.0847,
+            "recalibrate_duration": 0.1351,
+            "apply_calibration_duration": 0.142,
+            "flowframes_interpolation_duration": 0.0828,
+            "apply_chromakey_duration": 0.1349,
+            "prepare_movie_duration": 0.8443999999999999,
+            "generate_movie_duration": 0.2726,
+            "extract_movie_thumb_duration": 809.01,
+            "backup_duration": 0.0521,
+            "process_duration": 827.7545,
+            "total_duration": 2461.131
+        },
+        "downloaded_size": 19175026,
+        "transfer_rate": 14675274.312457634,
+        "process_duration": null,
+        "total_duration": null
+    },
+    "expected_picture_count": 3,
+    "iterations": 1,
+    "expected_cameras": 3,
+    "timestamp": "241129-163225",
+    "sequence_number": 284
+}

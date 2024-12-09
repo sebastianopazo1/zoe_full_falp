@@ -29,27 +29,28 @@ class Stitcher:
             if centerB_x - 2000 <= x <= centerB_x + 2000:
                 valid_indices_B.append(i)
 
-        kpsA = kpsA[valid_indices_A]
-        featuresA = featuresA[valid_indices_A]
-        kpsB = kpsB[valid_indices_B]
-        featuresB = featuresB[valid_indices_B]
+        self.kpsA = kpsA[valid_indices_A]
+        self.featuresA = featuresA[valid_indices_A]
+        self.kpsB = kpsB[valid_indices_B]
+        self.featuresB = featuresB[valid_indices_B]
 
-        if len(kpsA) < minKeypoints or len(kpsB) < minKeypoints:
+        if len(self.kpsA) < minKeypoints or len(kpsB) < minKeypoints:
             print("No se detectaron suficientes puntos clave.")
             return None
         
         #Encontrar puntos de interes
-        M = self.matchKeypoints(kpsA, kpsB, featuresA, featuresB, ratio, reprojThresh)
+        M = self.matchKeypoints(self.kpsA, self.kpsB, self.featuresA, self.featuresB, ratio, reprojThresh)
         if M is None:
             print("No se encontraron suficientes coincidencias para unir las imágenes.")
             return None
         (matches, H, status) = M
-        result_width = max(widthA + widthB, widthA * 2)
+        result_width  = max(widthA + widthB, widthA * 2)
         result_height = max(heightA + heightB, heightA * 2)
-        if H.shape == (2, 3):  #transformación afín
-            result = cv2.warpAffine(imageA, H, (result_width, result_height))
-        else:  #homografía
-            result = cv2.warpPerspective(imageA, H, (result_width, result_height))
+        result = cv2.warpPerspective(imageA, H, (result_width, result_height))
+        # if H.shape == (2, 3):  #transformación afín
+        #     result = cv2.warpAffine(imageA, H, (result_width, result_height))
+        # else:  #homografía
+        #     result = cv2.warpPerspective(imageA, H, (result_width, result_height))
 
         y_offset, x_offset = heightB, widthB
         result[0:y_offset, 0:x_offset] = imageB
@@ -60,7 +61,7 @@ class Stitcher:
         result = result[y:y+h, x:x+w]
 
         if showMatches:
-            vis = self.drawMatches(imageA, imageB, kpsA, kpsB, matches, status)
+            vis = self.drawMatches(imageA, imageB, self.kpsA, kpsB, matches, status)
             return (result, vis)
         return result
 
@@ -85,6 +86,13 @@ class Stitcher:
         kps = np.float32([kp.pt for kp in kps])
         return (kps, features)
 
+    def detectAndDescribe2(self, image):
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        descriptor = cv2.AKAZE_create(nfeatures=2000)
+        kps, features = descriptor.detectAndCompute(gray, None)
+        kps = np.float32([kp.pt for kp in kps])
+        return (kps, features)
+    
     def matchKeypoints(self, kpsA, kpsB, featuresA, featuresB, ratio, reprojThresh):
         matcher = cv2.DescriptorMatcher_create("BruteForce")
         rawMatches = matcher.knnMatch(featuresA, featuresB, 2)
@@ -99,7 +107,16 @@ class Stitcher:
             (H, status) = cv2.findHomography(ptsA, ptsB, cv2.RANSAC, reprojThresh)
             return (matches, H, status)
         return None
-
+    
+    def matchKeypoints2(self, kpsA, kpsB, featuresA, featuresB, ratio, reprojThresh):
+        index_params = dict(algorithm=0, trees=5)
+        search_params = dict(checks=50)
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        matches_flann = flann.match(featuresA, featuresB)
+        matches_flann = sorted(matches_flann, key=lambda x: x.distance)
+        
+        return matches_flann        
+    
     def drawMatches(self, imageA, imageB, kpsA, kpsB, matches, status):
         (hA, wA) = imageA.shape[:2]
         (hB, wB) = imageB.shape[:2]
@@ -117,6 +134,7 @@ class Stitcher:
 def load_and_resize_images(folder, new_width):
     images = []
     filenames = ["0002.jpg", "0003.jpg", "0004.jpg"]
+    #filenames = ["0001.jpg", "0002.jpg", "0003.jpg"]
     for filename in filenames:
         filepath = os.path.join(folder, filename)
         img = cv2.imread(filepath)

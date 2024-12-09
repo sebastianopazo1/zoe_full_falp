@@ -25,7 +25,7 @@ def process_two_cameras(image_path1, image_path2, model_name="zoedepth"):
 
     T_cam1_world = np.eye(4)
     T_cam2_world = np.array([[1, 0, 0, 0],
-                             [0, 1, 0, -0.38],
+                             [0, 1, 0, -0.5],
                              [0, 0, 1, 0],
                              [0, 0, 0, 1]])
 

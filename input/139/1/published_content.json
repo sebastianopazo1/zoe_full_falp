@@ -1,0 +1,94 @@
+{
+    "all_media": [],
+    "original_files": [
+        {
+            "url": "/pictures/241113-160857/original/0001.jpg",
+            "thumb": "/pictures/241113-160857/original/0001.jpg",
+            "camera_index": 1
+        },
+        {
+            "url": "/pictures/241113-160857/original/0002.jpg",
+            "thumb": "/pictures/241113-160857/original/0002.jpg",
+            "camera_index": 2
+        },
+        {
+            "url": "/pictures/241113-160857/original/0003.jpg",
+            "thumb": "/pictures/241113-160857/original/0003.jpg",
+            "camera_index": 3
+        },
+        {
+            "url": "/pictures/241113-160857/original/0004.jpg",
+            "thumb": "/pictures/241113-160857/original/0004.jpg",
+            "camera_index": 4
+        }
+    ],
+    "aligned_files": [],
+    "raw_files": [],
+    "mp4_files": [],
+    "gif_files": [],
+    "preview_files": [],
+    "frame_files": [],
+    "thumbs_files": [
+        {
+            "url": "/pictures/241113-160857/thumbs/0001_0019.jpg.thumb.jpg",
+            "thumb": "/pictures/241113-160857/thumbs/0001_0019.jpg.thumb.jpg"
+        },
+        {
+            "url": "/pictures/241113-160857/thumbs/0002_0019.jpg.thumb.jpg",
+            "thumb": "/pictures/241113-160857/thumbs/0002_0019.jpg.thumb.jpg"
+        },
+        {
+            "url": "/pictures/241113-160857/thumbs/0003_0019.jpg.thumb.jpg",
+            "thumb": "/pictures/241113-160857/thumbs/0003_0019.jpg.thumb.jpg"
+        },
+        {
+            "url": "/pictures/241113-160857/thumbs/0004_0019.jpg.thumb.jpg",
+            "thumb": "/pictures/241113-160857/thumbs/0004_0019.jpg.thumb.jpg"
+        }
+    ],
+    "small_thumbs_files": [],
+    "original_movies": [],
+    "interpolated_files": [],
+    "wiggle_files": [],
+    "calibration_file": "",
+    "show_in_gallery": true,
+    "settings_summary": "",
+    "output_settings": {
+        "resolution": "720x480",
+        "aspect_ratio": "3:2",
+        "output_fps": 12,
+        "repeat": 1,
+        "bounce": true,
+        "trigger_mode": "Freeze",
+        "trigger_delay": 0
+    },
+    "performance": {
+        "durations": {
+            "trigger_duration": 316.66666666666663,
+            "file_transfer_duration": 2089.8918,
+            "extract_raw_duration": 0.5603,
+            "check_files_duration": 2.602,
+            "wiggle_duration": 0.5045999999999999,
+            "input_transform_duration": 0.4033,
+            "recalibrate_duration": 0.3927,
+            "apply_calibration_duration": 0.34409999999999996,
+            "flowframes_interpolation_duration": 0.18589999999999998,
+            "apply_chromakey_duration": 2.5511,
+            "prepare_movie_duration": 0.7416999999999999,
+            "generate_movie_duration": 0.3882,
+            "extract_movie_thumb_duration": 2680.1304,
+            "backup_duration": 0.0436,
+            "process_duration": 2723.0876,
+            "total_duration": 5147.3411
+        },
+        "downloaded_size": 23502227,
+        "transfer_rate": 11245666.880936135,
+        "process_duration": null,
+        "total_duration": null
+    },
+    "expected_picture_count": 4,
+    "iterations": 1,
+    "expected_cameras": 4,
+    "timestamp": "241113-160857",
+    "sequence_number": 240
+}
