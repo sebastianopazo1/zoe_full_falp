@@ -56,9 +56,8 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     print(R.shape)
     # Convertir profundidad a puntos 3D
     points1 = depth_to_points(depth1[None])
-    #points2 = depth_to_points(depth2[None], R = R, t = np.array([0,0,0]))
-    points2 = depth_to_points(depth2[None])
-    points2 = np.dot(points2, R.T)
+    points2 = depth_to_points(depth2[None], R = R, t = np.array([0,0,4.6]))
+    
 
     # Aplanar puntos
     points1_flat = points1.reshape(-1, 3)
