@@ -78,65 +78,79 @@ def get_3d_keypoints(img_np, depth_map, pose_model, score_threshold=0.3, visuali
     
     return np.array(keypoints_3d), valid_pairs
 
-def estimate_transformation(source_points, target_points):
+
+def estimate_transformation(source_points, target_points, error_threshold=5.0, max_iterations=10):
     """
-    Estima la transformación rígida entre dos conjuntos de puntos 3D
-    asegurando una transformación válida en los tres ejes
+    Estima la transformación rígida entre dos conjuntos de puntos 3D con normalización y refinamiento iterativo.
+
+    Parameters:
+        source_points (np.ndarray): Puntos fuente (Nx3).
+        target_points (np.ndarray): Puntos destino (Nx3).
+        error_threshold (float): Umbral para la validación del RMSE.
+        max_iterations (int): Número máximo de iteraciones para refinamiento.
+
+    Returns:
+        R (np.ndarray): Matriz de rotación 3x3.
+        t (np.ndarray): Vector de traslación 3x1.
     """
     if len(source_points) < 3 or len(target_points) < 3:
-        print("No hay suficientes keypoints para estimar la transformación")
+        print(f"Error: No hay suficientes puntos para estimar la transformación.")
+        print(f"Source points: {len(source_points)}, Target points: {len(target_points)}")
         return None, None
-    
-    # Calcular centroide
+
+    # Centrar y normalizar las nubes de puntos
     source_centroid = np.mean(source_points, axis=0)
     target_centroid = np.mean(target_points, axis=0)
-    
-    # Centrar puntos
     source_centered = source_points - source_centroid
     target_centered = target_points - target_centroid
-    
-    # Matriz de covarianza
-    H = source_centered.T @ target_centered
-    
-    try:
-        # SVD
-        U, S, Vt = np.linalg.svd(H)
-        
-        # Matriz de rotación
-        R = Vt.T @ U.T
-        
-        # Asegurar que el determinante sea positivo
-        if np.linalg.det(R) < 0:
-            Vt[-1, :] *= -1
+
+    # Normalizar por la escala (tamaño promedio de las nubes)
+    source_scale = np.linalg.norm(source_centered, axis=1).mean()
+    target_scale = np.linalg.norm(target_centered, axis=1).mean()
+    source_normalized = source_centered / source_scale
+    target_normalized = target_centered / target_scale
+
+    print(f"Source centroid: {source_centroid}, scale: {source_scale}")
+    print(f"Target centroid: {target_centroid}, scale: {target_scale}")
+
+    for iteration in range(max_iterations):
+        # Matriz de covarianza
+        H = source_normalized.T @ target_normalized
+        print(f"Iteración {iteration + 1}, matriz de covarianza H:\n{H}")
+
+        try:
+            # Descomposición SVD
+            U, S, Vt = np.linalg.svd(H)
             R = Vt.T @ U.T
-        
-        # Verificar cercanía del determinante a 1
-        if not np.allclose(np.linalg.det(R), 1.0, rtol=1e-4):
-            print("Advertencia: La matriz de rotación puede no ser válida")
+
+            # Corregir si el determinante es negativo
+            if np.linalg.det(R) < 0:
+                print("Determinante negativo, corrigiendo matriz de rotación.")
+                Vt[-1, :] *= -1
+                R = Vt.T @ U.T
+
+            # Traslación (ajustada a la escala original)
+            t = target_centroid - (R @ source_centroid) * (target_scale / source_scale)
+
+            # Transformar los puntos fuente
+            transformed_points = (R @ source_points.T).T + t
+            errors = np.linalg.norm(transformed_points - target_points, axis=1)
+            rmse = np.sqrt(np.mean(errors**2))
+            print(f"Iteración {iteration + 1}: RMSE = {rmse}")
+
+            if rmse < error_threshold:
+                print("Transformación convergió con éxito.")
+                return R, t
+
+        except np.linalg.LinAlgError as e:
+            print(f"Error en el cálculo de SVD: {e}")
             return None, None
-        
-        # Traslación
-        t = target_centroid - R @ source_centroid
-        
-        # Checks de plausibilidad (umbrales más relajados)
-        max_rotation = np.max(np.abs(R - np.eye(3)))
-        max_translation = np.max(np.abs(t))
-        
-        # Ajusta los umbrales de acuerdo a tu escena:
-        if max_rotation > 1.2:  # antes 0.9
-            print("Advertencia: Rotación posiblemente demasiado grande")
-            return None, None
-        
-        if max_translation > 10.0:  # antes 5.0
-            print("Advertencia: Traslación posiblemente demasiado grande")
-            return None, None
-        
-        return R, t
-        
-    except np.linalg.LinAlgError:
-        print("Error en el cálculo de SVD")
-        return None, None
-    
+
+    print("No se logró convergencia en las iteraciones permitidas.")
+    return None, None
+
+
+
 def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_dir, 
                       model_name="zoedepth", max_depth=10.0, voxel_size=0.02, target_size=(640, 480)):
     
@@ -199,16 +213,18 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     
     # Aplicar la transformación estimada a la segunda nube
     points2_transformed = (R @ points2_flat.T).T + t
-
+    print(f"Número de puntos válidos en la nube 1: {points1_flat.shape[0]}")
+    print(f"Número de puntos válidos en la nube 2: {points2_transformed.shape[0]}")
     # Rotación adicional de 180° en ejes X y Z (si fuera necesario)
     R_180 = np.array([[-1, 0, 0],
                       [ 0, 1, 0],
                       [ 0, 0, -1]])
     
     center = np.mean(points2_transformed, axis=0)
-    points2_transformed = points2_transformed - center
-    points2_transformed = (R_180 @ points2_transformed.T).T
-    points2_transformed = points2_transformed + center
+    #points2_transformed = points2_transformed - center
+    #points2_transformed = (R_180 @ points2_transformed.T).T
+    #points2_transformed = points2_transformed + center
+    
 
     # Filtro de profundidad y de máscara alfa
     depth_mask1 = points1_flat[:, 2] < max_depth
