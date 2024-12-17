@@ -20,7 +20,7 @@ def resize_image(image, max_size=(640, 480)):
 
 def get_3d_keypoints(img_np, depth_map, pose_model, score_threshold=0.3, visualize=True):
     """
-    Obtiene los keypoints 3D específicos usando MMPose y el mapa de profundidad.
+    Obtiene keypoints 3D específicos usando MMPose y el mapa de profundidad.
     Visualiza los keypoints 2D sobre la imagen si 'visualize' es True.
     Ajusta el umbral de score a 'score_threshold'.
     """
@@ -52,14 +52,13 @@ def get_3d_keypoints(img_np, depth_map, pose_model, score_threshold=0.3, visuali
     
     keypoints_3d = []
     valid_pairs = {}
-    
-    # Procesar cada par de keypoints
+
     for pair_name, (idx1, idx2) in keypoint_pairs.items():
         if keypoints_scores[idx1] > score_threshold and keypoints_scores[idx2] > score_threshold:
             x1, y1 = map(int, keypoints_2d[idx1])
             x2, y2 = map(int, keypoints_2d[idx2])
             
-            # Verificar que los puntos estén dentro de los límites de la imagen/depth
+          
             if (0 <= x1 < depth_map.shape[1] and 0 <= y1 < depth_map.shape[0] and
                 0 <= x2 < depth_map.shape[1] and 0 <= y2 < depth_map.shape[0]):
                 
@@ -79,77 +78,11 @@ def get_3d_keypoints(img_np, depth_map, pose_model, score_threshold=0.3, visuali
     return np.array(keypoints_3d), valid_pairs
 
 
-def estimate_transformation(source_points, target_points, error_threshold=5.0, max_iterations=10):
-    """
-    Estima la transformación rígida entre dos conjuntos de puntos 3D con normalización y refinamiento iterativo.
-
-    Parameters:
-        source_points (np.ndarray): Puntos fuente (Nx3).
-        target_points (np.ndarray): Puntos destino (Nx3).
-        error_threshold (float): Umbral para la validación del RMSE.
-        max_iterations (int): Número máximo de iteraciones para refinamiento.
-
-    Returns:
-        R (np.ndarray): Matriz de rotación 3x3.
-        t (np.ndarray): Vector de traslación 3x1.
-    """
-    if len(source_points) < 3 or len(target_points) < 3:
-        print(f"Error: No hay suficientes puntos para estimar la transformación.")
-        print(f"Source points: {len(source_points)}, Target points: {len(target_points)}")
-        return None, None
-
-    # Centrar y normalizar las nubes de puntos
-    source_centroid = np.mean(source_points, axis=0)
-    target_centroid = np.mean(target_points, axis=0)
-    source_centered = source_points - source_centroid
-    target_centered = target_points - target_centroid
-
-    # Normalizar por la escala (tamaño promedio de las nubes)
-    source_scale = np.linalg.norm(source_centered, axis=1).mean()
-    target_scale = np.linalg.norm(target_centered, axis=1).mean()
-    source_normalized = source_centered / source_scale
-    target_normalized = target_centered / target_scale
-
-    print(f"Source centroid: {source_centroid}, scale: {source_scale}")
-    print(f"Target centroid: {target_centroid}, scale: {target_scale}")
-
-    for iteration in range(max_iterations):
-        # Matriz de covarianza
-        H = source_normalized.T @ target_normalized
-        print(f"Iteración {iteration + 1}, matriz de covarianza H:\n{H}")
-
-        try:
-            # Descomposición SVD
-            U, S, Vt = np.linalg.svd(H)
-            R = Vt.T @ U.T
-
-            # Corregir si el determinante es negativo
-            if np.linalg.det(R) < 0:
-                print("Determinante negativo, corrigiendo matriz de rotación.")
-                Vt[-1, :] *= -1
-                R = Vt.T @ U.T
-
-            # Traslación (ajustada a la escala original)
-            t = target_centroid - (R @ source_centroid) * (target_scale / source_scale)
-
-            # Transformar los puntos fuente
-            transformed_points = (R @ source_points.T).T + t
-            errors = np.linalg.norm(transformed_points - target_points, axis=1)
-            rmse = np.sqrt(np.mean(errors**2))
-            print(f"Iteración {iteration + 1}: RMSE = {rmse}")
-
-            if rmse < error_threshold:
-                print("Transformación convergió con éxito.")
-                return R, t
-
-        except np.linalg.LinAlgError as e:
-            print(f"Error en el cálculo de SVD: {e}")
-            return None, None
-
-    print("No se logró convergencia en las iteraciones permitidas.")
-    return None, None
-
-
+def erode_alpha_mask(alpha_channel, kernel_size=5, iterations=1):
+    
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    eroded_mask = cv2.erode(alpha_channel, kernel, iterations=iterations)
+    return eroded_mask
 
 def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_dir, 
                       model_name="zoedepth", max_depth=10.0, voxel_size=0.02, target_size=(640, 480)):
@@ -167,7 +100,7 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     pose_checkpoint = './td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
     pose_model = init_pose_model(pose_config, pose_checkpoint, device=DEVICE)
 
-    # Procesar primera imagen y máscara
+    # Procesar primera imagen
     img1 = Image.open(image_path1).convert("RGB")
     img1 = resize_image(img1, target_size)
     img_np1 = np.array(img1)
@@ -177,7 +110,10 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     mask_np1 = np.array(mask_img1)
     alpha_channel1 = mask_np1[:, :, 3]
 
-    # Procesar segunda imagen y máscara
+    # CONTRACCIÓN DE LA MÁSCARA
+    alpha_channel1_eroded = erode_alpha_mask(alpha_channel1, kernel_size=3, iterations=2)
+
+    # Procesar segunda imagen
     img2 = Image.open(image_path2).convert("RGB")
     img2 = resize_image(img2, target_size)
     img_np2 = np.array(img2)
@@ -187,59 +123,28 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     mask_np2 = np.array(mask_img2)
     alpha_channel2 = mask_np2[:, :, 3]
 
-    # Inferir profundidad
+    # CONTRACCIÓN DE LA MÁSCARA
+    alpha_channel2_eroded = erode_alpha_mask(alpha_channel2, kernel_size=3, iterations=2)
+
+    # Inferir mapas de profundidad
     with torch.no_grad():
         depth1 = model.infer_pil(img1)
         depth2 = model.infer_pil(img2)
 
-    # Obtener keypoints 3D con threshold=0.3 y visualización activa
-    keypoints3d_1, pairs1 = get_3d_keypoints(img_np1, depth1, pose_model, score_threshold=0.3, visualize=True)
-    keypoints3d_2, pairs2 = get_3d_keypoints(img_np2, depth2, pose_model, score_threshold=0.3, visualize=True)
-
-    # Estimar la transformación
-    R, t = estimate_transformation(keypoints3d_1, keypoints3d_2)
-    if R is None or t is None:
-        print("No se pudo estimar una transformación válida. Usando identidad.")
-        R = np.eye(3)
-        t = np.zeros(3)
-
-    # Convertir profundidad a nubes de puntos 3D
-    points1 = depth_to_points(depth1[None])
-    points2 = depth_to_points(depth2[None])
-
-    # Aplanar
+    # Filtrado con las máscaras erosionadas
+    points1 = depth_to_points(depth1[None])  # (1, H, W, 3)
+    points2 = depth_to_points(depth2[None])  # (1, H, W, 3)
     points1_flat = points1.reshape(-1, 3)
     points2_flat = points2.reshape(-1, 3)
-    
-    # Aplicar la transformación estimada a la segunda nube
-    points2_transformed = (R @ points2_flat.T).T + t
-    print(f"Número de puntos válidos en la nube 1: {points1_flat.shape[0]}")
-    print(f"Número de puntos válidos en la nube 2: {points2_transformed.shape[0]}")
-    # Rotación adicional de 180° en ejes X y Z (si fuera necesario)
-    R_180 = np.array([[-1, 0, 0],
-                      [ 0, 1, 0],
-                      [ 0, 0, -1]])
-    
-    center = np.mean(points2_transformed, axis=0)
-    #points2_transformed = points2_transformed - center
-    #points2_transformed = (R_180 @ points2_transformed.T).T
-    #points2_transformed = points2_transformed + center
-    
 
-    # Filtro de profundidad y de máscara alfa
-    depth_mask1 = points1_flat[:, 2] < max_depth
-    depth_mask2 = points2_transformed[:, 2] < max_depth
-    alpha_mask1 = alpha_channel1.reshape(-1) > 128
-    alpha_mask2 = alpha_channel2.reshape(-1) > 128
+    alpha_mask1 = alpha_channel1_eroded.reshape(-1) > 128
+    alpha_mask2 = alpha_channel2_eroded.reshape(-1) > 128
 
-    final_mask1 = depth_mask1 & alpha_mask1
-    final_mask2 = depth_mask2 & alpha_mask2
+    points1_filtered = points1_flat[alpha_mask1]
+    points2_filtered = points2_flat[alpha_mask2]
 
-    points1_filtered = points1_flat[final_mask1]
-    points2_filtered = points2_transformed[final_mask2]
-
-    colors1 = (img_np1.reshape(-1, 3)[final_mask1] / 255.0).astype(np.float32)
-    colors2 = (img_np2.reshape(-1, 3)[final_mask2] / 255.0).astype(np.float32)
+    colors1 = (img_np1.reshape(-1, 3)[alpha_mask1] / 255.0).astype(np.float32)
+    colors2 = (img_np2.reshape(-1, 3)[alpha_mask2] / 255.0).astype(np.float32)
 
     # Crear nubes de puntos
     pcd1 = o3d.geometry.PointCloud()
@@ -254,14 +159,80 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     pcd1 = pcd1.voxel_down_sample(voxel_size=voxel_size)
     pcd2 = pcd2.voxel_down_sample(voxel_size=voxel_size)
 
-    # Unir ambas nubes para calcular centro de escena
+    # ===========================
+    # 2) REGISTRO GLOBAL (FPFH + RANSAC)
+    # ===========================
+    # a) Estimamos normales (requisito para FPFH)
+    pcd1.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
+    pcd2.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
+
+    #Calcular descriptores FPFH
+    radius_feature = voxel_size * 5
+    pcd1_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+        pcd1,
+        o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100)
+    )
+    pcd2_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+        pcd2,
+        o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100)
+    )
+
+    #Registro global RANSAC
+    distance_threshold = voxel_size * 1.5
+    result_ransac = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        pcd1, pcd2, pcd1_fpfh, pcd2_fpfh,
+        mutual_filter=True,
+        max_correspondence_distance=distance_threshold,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+        ransac_n=4,
+        checkers=[
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
+        ],
+        criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(4000000, 500)
+    )
+    T_ransac = result_ransac.transformation
+    print("Transformation from RANSAC:\n", T_ransac)
+
+    pcd2.transform(T_ransac)
+
+    # (Opcional) REFINE con ICP
+    distance_threshold_icp = voxel_size * 1.0
+    result_icp = o3d.pipelines.registration.registration_icp(
+        pcd2, pcd1,
+        distance_threshold_icp,
+        np.eye(4),
+        o3d.pipelines.registration.TransformationEstimationPointToPoint()
+    )
+    T_icp = result_icp.transformation
+    print("Transformation refined via ICP:\n", T_icp)
+
+    # Aplicamos la ref. final a pcd2 (acumulando la matriz de RANSAC)
+    pcd2.transform(T_icp)
+
+    center2 = pcd2.get_center()
+    pcd2.translate(-center2)
+    R_180 = pcd2.get_rotation_matrix_from_axis_angle([0, np.pi, 0])
+    pcd2.rotate(R_180, center=(0, 0, 0))
+    center2[2] = center2[2] + 0.4
+    pcd2.translate(center2)
+
+    pcd_comb = pcd1 + pcd2
+    output_pcd1 = os.path.join(output_dir, "combined_pcd1.ply")
+    output_pcd2 = os.path.join(output_dir, "combined_pcd2.ply")
+    output_ply_path = os.path.join(output_dir, "combined_pt.ply")
+    o3d.io.write_point_cloud(output_ply_path, pcd_comb)
+    o3d.io.write_point_cloud(output_pcd1, pcd1)
+    o3d.io.write_point_cloud(output_pcd2, pcd2)
+    # ===========================
+    # Visualizacion Open3D
+    # ===========================
     points_combined = np.vstack((np.asarray(pcd1.points), np.asarray(pcd2.points)))
     center = points_combined.mean(axis=0)
     max_bound = points_combined.max(axis=0)
     min_bound = points_combined.min(axis=0)
     scene_scale = np.linalg.norm(max_bound - min_bound)
 
-    # Visualización Open3D
     vis = o3d.visualization.Visualizer()
     vis.create_window(width=1280, height=720)
     vis.add_geometry(pcd1)
@@ -271,7 +242,6 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     opt.point_size = 2.0
     opt.background_color = np.asarray([0, 0, 0])
 
-    # Configurar la cámara
     ctr = vis.get_view_control()
     camera_params = ctr.convert_to_pinhole_camera_parameters()
     
@@ -285,13 +255,13 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     ])
     ctr.convert_from_pinhole_camera_parameters(camera_params)
     ctr.set_zoom(0.7)
-
     ctr.set_front([-0.5, -0.5, -0.5])
     ctr.set_up([0, -1, 0])
     ctr.set_lookat(center)
 
     vis.run()
     vis.destroy_window()
+
 
 def main():
     parser = argparse.ArgumentParser(description='Visualización de profundidad y nube de puntos 3D con máscaras y alineación por keypoints')
