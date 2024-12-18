@@ -7,193 +7,203 @@ from zoedepth.utils.geometry import depth_to_points
 import open3d as o3d
 import os
 import argparse
-from mmpose.apis import inference_topdown
-from mmpose.apis import init_model as init_pose_model
 import cv2
 
-def resize_image(image, max_size=(640, 480)):
-    """
-    Redimensiona la imagen manteniendo la proporción
-    """
-    image.thumbnail(max_size, Image.LANCZOS)
-    return image
-
-def transform_points(points, transformation):
-    """
-    Aplica una matriz de transformación 4x4 a un conjunto de puntos 3D.
-    """
-    points_homogeneous = np.hstack((points, np.ones((points.shape[0], 1))))  # Convertir a coordenadas homogéneas
-    transformed_points = (transformation @ points_homogeneous.T).T
-    return transformed_points[:, :3]  # Convertir de vuelta a coordenadas 3D
-
-def erode_alpha_mask(alpha_channel, kernel_size=5, iterations=1):
-    
-    kernel = np.ones((kernel_size, kernel_size), np.uint8)
-    eroded_mask = cv2.erode(alpha_channel, kernel, iterations=iterations)
-    return eroded_mask
-
-def process_image(image_path, mask_path, model, target_size, voxel_size=0.02):
-    """
-    Procesa una sola imagen con su máscara, permitiendo seleccionar puntos 2D y obtener nubes de puntos 3D.
-    """
-    img = Image.open(image_path).convert("RGB")
-    img = resize_image(img, target_size)
-    img_np = np.array(img)
-
-    mask_img = Image.open(mask_path).convert("RGBA")
-    mask_img = resize_image(mask_img, target_size)
-    mask_np = np.array(mask_img)
-    alpha_channel = mask_np[:, :, 3]
-
-    # Contracción de la máscara
-    alpha_channel_eroded = erode_alpha_mask(alpha_channel, kernel_size=5, iterations=2)
-
-    # Inferir mapa de profundidad
-    with torch.no_grad():
-        depth = model.infer_pil(img)
-
-    # Selección manual de puntos 2D
-    points_2d = select_points_2d(img_np.copy(), "Seleccionar puntos en Imagen")
-    points_3d_selected = []
-    for x, y in points_2d:
-        if 0 <= x < depth.shape[1] and 0 <= y < depth.shape[0]:
-            z = depth[y, x]
-            points_3d_selected.append([x, y, z])
-            print(f"Punto 3D seleccionado: ({x}, {y}, {z:.4f})")
-
-    points_3d_selected = np.array(points_3d_selected)
-
-    # Crear nube de puntos con filtrado alpha
-    points = depth_to_points(depth[None])
-    points_flat = points.reshape(-1, 3)
-    alpha_mask = alpha_channel_eroded.reshape(-1) > 128
-    points_filtered = points_flat[alpha_mask]
-    colors = (img_np.reshape(-1, 3)[alpha_mask] / 255.0).astype(np.float32)
-
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points_filtered)
-    pcd.colors = o3d.utility.Vector3dVector(colors)
-
-    return pcd, points_3d_selected
-
-def select_points_2d(image_np, window_name="Seleccionar puntos"):
-    """
-    Permite seleccionar manualmente puntos 2D con el mouse en una ventana de OpenCV.
-    Retorna una lista con las coordenadas (x, y) de los puntos seleccionados.
-    """
-    points = []
-
-    def mouse_callback(event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN:
-            print(f"Punto seleccionado: ({x}, {y})")
-            points.append((x, y))
-            cv2.circle(image_np, (x, y), 5, (0, 0, 255), -1)
-            cv2.imshow(window_name, image_np)
-
-    cv2.imshow(window_name, image_np)
-    cv2.setMouseCallback(window_name, mouse_callback)
-
-    print("Haz clic izquierdo para seleccionar puntos. Presiona cualquier tecla para finalizar...")
-    cv2.waitKey(0)
-    cv2.destroyWindow(window_name)
-
-    return points
-def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_dir, 
-                      model_name="zoedepth", max_depth=10.0, voxel_size=0.02, target_size=(640, 480)):
+def init_model(model_name="zoedepth"):
+    """Initialize depth estimation model"""
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {DEVICE}")
-
-    # Configurar modelo de profundidad
+    
     conf = get_config(model_name, "infer")
     model = build_model(conf).to(DEVICE)
     model.eval()
+    return model
 
-    # Procesar imágenes
-    pcd1, points_3d_1 = process_image(image_path1, mask_path1, model, target_size, voxel_size)
-    pcd2, points_3d_2 = process_image(image_path2, mask_path2, model, target_size, voxel_size)
+def resize_image(image, max_size=(640, 480)):
+    """Resize image maintaining aspect ratio"""
+    image.thumbnail(max_size, Image.LANCZOS)
+    return image
 
-    # Downsampling
+def load_and_process_images(image_path1, mask_path1, image_path2, mask_path2, target_size=(640, 480)):
+    """Load and process images and masks"""
+    
+    img1 = Image.open(image_path1).convert("RGB")
+    img1 = resize_image(img1, target_size)
+    mask_img1 = Image.open(mask_path1).convert("RGBA")
+    mask_img1 = resize_image(mask_img1, target_size)
+  
+    img2 = Image.open(image_path2).convert("RGB")
+    img2 = resize_image(img2, target_size)
+    mask_img2 = Image.open(mask_path2).convert("RGBA")
+    mask_img2 = resize_image(mask_img2, target_size)
+    
+    return img1, mask_img1, img2, mask_img2
+
+def get_depth_maps(model, img1, img2):
+    """Get depth maps for both images"""
+    with torch.no_grad():
+        depth1 = model.infer_pil(img1)
+        depth2 = model.infer_pil(img2)
+    return depth1, depth2
+
+def erode_alpha_mask(alpha_channel, kernel_size=5, iterations=1):
+    """Apply erosion to alpha mask"""
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    return cv2.erode(alpha_channel, kernel, iterations=iterations)
+
+def process_masks(mask_img1, mask_img2):
+
+    mask_np1 = np.array(mask_img1)
+    mask_np2 = np.array(mask_img2)
+    
+    alpha_channel1 = mask_np1[:, :, 3]
+    alpha_channel2 = mask_np2[:, :, 3]
+    
+    alpha_channel1_eroded = erode_alpha_mask(alpha_channel1, kernel_size=3, iterations=2)
+    alpha_channel2_eroded = erode_alpha_mask(alpha_channel2, kernel_size=3, iterations=2)
+    
+    return alpha_channel1_eroded, alpha_channel2_eroded
+
+def create_point_clouds(points1, points2, colors1, colors2, voxel_size=0.02):
+    """Create and process point clouds"""
+   
+    pcd1 = o3d.geometry.PointCloud()
+    pcd1.points = o3d.utility.Vector3dVector(points1)
+    pcd1.colors = o3d.utility.Vector3dVector(colors1)
+    
+    pcd2 = o3d.geometry.PointCloud()
+    pcd2.points = o3d.utility.Vector3dVector(points2)
+    pcd2.colors = o3d.utility.Vector3dVector(colors2)
+    
     pcd1 = pcd1.voxel_down_sample(voxel_size=voxel_size)
     pcd2 = pcd2.voxel_down_sample(voxel_size=voxel_size)
+    
+    return pcd1, pcd2
 
-    # Estimación de normales
-    pcd1.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 2, max_nn=30))
-    pcd2.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size * 2, max_nn=30))
-
-    # Calcular descriptores FPFH
-    radius_feature = voxel_size * 5
+def register_point_clouds(pcd1, pcd2, voxel_size):
+    """Register point clouds using RANSAC and ICP"""
+    
+    pcd1.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
+    pcd2.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel_size*2, max_nn=30))
+    
+    radius_feature = voxel_size * 10
     pcd1_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
-        pcd1, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100)
-    )
+        pcd1, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
     pcd2_fpfh = o3d.pipelines.registration.compute_fpfh_feature(
-        pcd2, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100)
-    )
-
-    # Registro global
-    distance_threshold = voxel_size * 1.5
+        pcd2, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
+   
+    distance_threshold = voxel_size * 2
     result_ransac = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
         pcd1, pcd2, pcd1_fpfh, pcd2_fpfh,
         mutual_filter=True,
         max_correspondence_distance=distance_threshold,
         estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
         ransac_n=4,
+        checkers=[
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(distance_threshold)
+        ],
         criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(4000000, 500)
     )
-    T_ransac = result_ransac.transformation
-    print("Transformación RANSAC:\n", T_ransac)
+    
+    result_icp = o3d.pipelines.registration.registration_icp(
+        pcd2, pcd1,
+        distance_threshold,
+        result_ransac.transformation,
+        o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+        criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=100)
+    )
+    
+    return result_ransac.transformation, result_icp.transformation
 
-    # Aplicar transformación a puntos seleccionados
-    points_3d_2_transformed = transform_points(points_3d_2, T_ransac)
-
-    # Visualización final
+def setup_visualization():
+    """Setup visualization window"""
     vis = o3d.visualization.Visualizer()
     vis.create_window(width=1280, height=720)
-
-    # Agregar nubes de puntos
-    vis.add_geometry(pcd1)
-    pcd2.transform(T_ransac)
-    vis.add_geometry(pcd2)
-
-    # Agregar puntos seleccionados como rojo
-    selected_pcd1 = o3d.geometry.PointCloud()
-    selected_pcd1.points = o3d.utility.Vector3dVector(points_3d_1)
-    selected_pcd1.paint_uniform_color([1.0, 0.0, 0.0])
-    vis.add_geometry(selected_pcd1)
-
-    selected_pcd2 = o3d.geometry.PointCloud()
-    selected_pcd2.points = o3d.utility.Vector3dVector(points_3d_2_transformed)
-    selected_pcd2.paint_uniform_color([1.0, 0.0, 0.0])
-    vis.add_geometry(selected_pcd2)
-
+    
     opt = vis.get_render_option()
     opt.point_size = 2.0
     opt.background_color = np.asarray([0, 0, 0])
+    
+    return vis
 
+def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_dir, 
+                      model_name="zoedepth", max_depth=10.0, voxel_size=0.02, target_size=(640, 480)):
+  
+    model = init_model(model_name)
+  
+    img1, mask_img1, img2, mask_img2 = load_and_process_images(
+        image_path1, mask_path1, image_path2, mask_path2, target_size)
+  
+    depth1, depth2 = get_depth_maps(model, img1, img2)
+    
+    alpha_mask1, alpha_mask2 = process_masks(mask_img1, mask_img2)
+ 
+    img_np1 = np.array(img1)
+    img_np2 = np.array(img2)
+    
+    points1 = depth_to_points(depth1[None])
+    points2 = depth_to_points(depth2[None])
+    
+    alpha_mask1_flat = alpha_mask1.reshape(-1) > 128
+    alpha_mask2_flat = alpha_mask2.reshape(-1) > 128
+    
+    points1_filtered = points1.reshape(-1, 3)[alpha_mask1_flat]
+    points2_filtered = points2.reshape(-1, 3)[alpha_mask2_flat]
+    
+    colors1 = (img_np1.reshape(-1, 3)[alpha_mask1_flat] / 255.0).astype(np.float32)
+    colors2 = (img_np2.reshape(-1, 3)[alpha_mask2_flat] / 255.0).astype(np.float32)
+    
+   
+    pcd1, pcd2 = create_point_clouds(points1_filtered, points2_filtered, colors1, colors2, voxel_size)
+  
+    T_ransac, T_icp = register_point_clouds(pcd1, pcd2, voxel_size)
+    
+    pcd2.transform(T_ransac)
+    pcd2.transform(T_icp)
+    
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        o3d.io.write_point_cloud(os.path.join(output_dir, "cloud1.ply"), pcd1)
+        o3d.io.write_point_cloud(os.path.join(output_dir, "cloud2.ply"), pcd2)
+        pcd_combined = pcd1 + pcd2
+        o3d.io.write_point_cloud(os.path.join(output_dir, "combined.ply"), pcd_combined)
+    
+    vis = setup_visualization()
+    vis.add_geometry(pcd1)
+    vis.add_geometry(pcd2)
+  
     vis.run()
     vis.destroy_window()
+    
+    return T_ransac, T_icp
 
 def main():
-    parser = argparse.ArgumentParser(description='Visualización de profundidad y nube de puntos 3D con máscaras y alineación por keypoints')
-    parser.add_argument('--image1', '-i1', required=True, help='Primera imagen de entrada')
-    parser.add_argument('--mask1', '-m1', required=True, help='Máscara para primera imagen')
-    parser.add_argument('--image2', '-i2', required=True, help='Segunda imagen de entrada')
-    parser.add_argument('--mask2', '-m2', required=True, help='Máscara para segunda imagen')
-    parser.add_argument('--output', '-o', default='output', help='Path salida')
-    parser.add_argument('--model', '-md', default='zoedepth', help='Modelo utilizado')
-    parser.add_argument('--max-depth', type=float, default=10.0, help='Profundidad máxima en metros (default: 10.0)')
-    parser.add_argument('--voxel-size', type=float, default=0.02, help='Tamaño de voxel para downsampling (default: 0.02)')
-    parser.add_argument('--width', type=int, default=640, help='Ancho de la imagen redimensionada (default: 640)')
-    parser.add_argument('--height', type=int, default=480, help='Alto de la imagen redimensionada (default: 480)')
-
+    parser = argparse.ArgumentParser(description='Point Cloud Processing and Alignment')
+    parser.add_argument('--image1', '-i1', required=True, help='First input image')
+    parser.add_argument('--mask1', '-m1', required=True, help='First image mask')
+    parser.add_argument('--image2', '-i2', required=True, help='Second input image')
+    parser.add_argument('--mask2', '-m2', required=True, help='Second image mask')
+    parser.add_argument('--output', '-o', default='output', help='Output directory')
+    parser.add_argument('--model', '-m', default='zoedepth', help='Model name')
+    parser.add_argument('--voxel-size', type=float, default=0.02, help='Voxel size for downsampling')
+    parser.add_argument('--width', type=int, default=640, help='Target image width')
+    parser.add_argument('--height', type=int, default=480, help='Target image height')
+    
     args = parser.parse_args()
-    os.makedirs(args.output, exist_ok=True)
     
     target_size = (args.width, args.height)
     
-    process_two_images(args.image1, args.mask1, args.image2, args.mask2, 
-                       args.output, args.model, args.max_depth, args.voxel_size,
-                       target_size)
+    T_ransac, T_icp = process_two_images(
+        args.image1, args.mask1, args.image2, args.mask2,
+        args.output, args.model, voxel_size=args.voxel_size,
+        target_size=target_size
+    )
+    
+    print("RANSAC Transformation:")
+    print(T_ransac)
+    print("\nICP Refinement:")
+    print(T_icp)
 
 if __name__ == "__main__":
     main()
-
