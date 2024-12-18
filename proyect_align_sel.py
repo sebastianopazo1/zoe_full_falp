@@ -147,100 +147,209 @@ def setup_visualization():
     
     return vis
 
-def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_dir, 
-                      model_name="zoedepth", max_depth=10.0, voxel_size=0.02, target_size=(640, 480)):
-    """Función principal que procesa dos imágenes"""
-    # Inicializar modelos
+def create_sphere(center, radius=0.02, color=[1, 0, 0]):
+    """Crea una esfera en la posición especificada"""
+    sphere = o3d.geometry.TriangleMesh.create_sphere(radius=radius)
+    sphere.paint_uniform_color(color)
+    sphere.translate(center)
+    return sphere
+
+def visualize_point_clouds(pcd1, pcd2, highlighted_pcd):
+    """Visualiza las nubes de puntos usando el renderizador basado en GPU"""
+    app = o3d.visualization.gui.Application.instance
+    app.initialize()
+
+    # Crear ventana
+    window = app.create_window("Visualización de Nubes de Puntos", 1280, 720)
+
+    # Crear widget de escena
+    scene_widget = o3d.visualization.gui.SceneWidget()
+    scene_widget.scene = o3d.visualization.rendering.Open3DScene(window.renderer)
+    window.add_child(scene_widget)
+
+    # Añadir geometrías a la escena
+    material = o3d.visualization.rendering.MaterialRecord()
+    material.shader = "defaultUnlit"
+    material.point_size = 2.0
+
+    scene_widget.scene.add_geometry("PointCloud1", pcd1, material)
+    scene_widget.scene.add_geometry("PointCloud2", pcd2, material)
+    
+    if len(highlighted_pcd.points) > 0:
+        # Crear esferas para los puntos destacados
+        for i, point in enumerate(highlighted_pcd.points):
+            sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
+            sphere.paint_uniform_color([1, 0, 0])  # Color rojo
+            sphere.translate(point)
+            scene_widget.scene.add_geometry(f"Sphere_{i}", sphere, material)
+
+    # Configurar cámara usando los límites combinados de ambas nubes de puntos
+    bounds1 = pcd1.get_axis_aligned_bounding_box()
+    bounds2 = pcd2.get_axis_aligned_bounding_box()
+    
+    # Combinar los límites manualmente
+    min_bound = np.minimum(bounds1.min_bound, bounds2.min_bound)
+    max_bound = np.maximum(bounds1.max_bound, bounds2.max_bound)
+    
+    # Crear un nuevo bounding box combinado
+    combined_bounds = o3d.geometry.AxisAlignedBoundingBox(min_bound, max_bound)
+    
+    # Configurar la cámara usando los límites combinados
+    scene_widget.setup_camera(60, combined_bounds, combined_bounds.get_center())
+
+    app.run()
+
+def process_two_images(image_path1, image_path2, output_dir, 
+                      model_name="zoedepth", target_size=(640, 480)):
+    # Inicializar modelo
     depth_model = init_model(model_name)
     
-    # Cargar y procesar imágenes
-    img1, mask_img1, img2, mask_img2 = load_and_process_images(
-        image_path1, mask_path1, image_path2, mask_path2, target_size)
+    # Seleccionar puntos en la primera imagen y obtener dimensiones originales
+    points_2d, img_shape = select_points(image_path1)
+    
+    # Cargar y procesar imágenes con canal alpha
+    img1 = Image.open(image_path1).convert("RGBA")
+    img2 = Image.open(image_path2).convert("RGBA")
+    
+    # Obtener máscaras alpha
+    alpha_mask1 = np.array(img1.split()[-1]) > 0
+    alpha_mask2 = np.array(img2.split()[-1]) > 0
+    
+    # Convertir a RGB para el modelo de profundidad
+    img1_rgb = img1.convert("RGB")
+    img2_rgb = img2.convert("RGB")
+    
+    # Redimensionar
+    img1_rgb = resize_image(img1_rgb, target_size)
+    img2_rgb = resize_image(img2_rgb, target_size)
+    
+    # Redimensionar máscaras alpha
+    alpha_mask1 = Image.fromarray(alpha_mask1)
+    alpha_mask2 = Image.fromarray(alpha_mask2)
+    alpha_mask1 = np.array(alpha_mask1.resize(target_size, Image.NEAREST))
+    alpha_mask2 = np.array(alpha_mask2.resize(target_size, Image.NEAREST))
+    
+    # Convertir imágenes a numpy arrays
+    img_np1 = np.array(img1_rgb)
+    img_np2 = np.array(img2_rgb)
     
     # Obtener mapas de profundidad
-    depth1, depth2 = get_depth_maps(depth_model, img1, img2)
+    with torch.no_grad():
+        depth1 = depth_model.infer_pil(img1_rgb)
+        depth2 = depth_model.infer_pil(img2_rgb)
     
-    # Procesar máscaras
-    alpha_mask1, alpha_mask2 = process_masks(mask_img1, mask_img2)
+    # Aplicar máscaras a los mapas de profundidad
+    depth1[~alpha_mask1] = 0
+    depth2[~alpha_mask2] = 0
     
-    # Convertir a arrays numpy
-    img_np1 = np.array(img1)
-    img_np2 = np.array(img2)
-    
-    # Crear nubes de puntos
+    # Convertir a puntos 3D
     points1 = depth_to_points(depth1[None])
     points2 = depth_to_points(depth2[None])
     
-    # Filtrar puntos con máscaras
-    alpha_mask1_flat = alpha_mask1.reshape(-1) > 128
-    alpha_mask2_flat = alpha_mask2.reshape(-1) > 128
+    # Crear nubes de puntos con filtrado por máscara
+    valid_points1 = alpha_mask1.reshape(-1)
+    valid_points2 = alpha_mask2.reshape(-1)
     
-    points1_filtered = points1.reshape(-1, 3)[alpha_mask1_flat]
-    points2_filtered = points2.reshape(-1, 3)[alpha_mask2_flat]
+    pcd1 = o3d.geometry.PointCloud()
+    pcd1.points = o3d.utility.Vector3dVector(points1.reshape(-1, 3)[valid_points1])
+    pcd1.colors = o3d.utility.Vector3dVector((img_np1.reshape(-1, 3)[valid_points1] / 255.0).astype(np.float32))
     
-    colors1 = (img_np1.reshape(-1, 3)[alpha_mask1_flat] / 255.0).astype(np.float32)
-    colors2 = (img_np2.reshape(-1, 3)[alpha_mask2_flat] / 255.0).astype(np.float32)
+    pcd2 = o3d.geometry.PointCloud()
+    pcd2.points = o3d.utility.Vector3dVector(points2.reshape(-1, 3)[valid_points2])
+    pcd2.colors = o3d.utility.Vector3dVector((img_np2.reshape(-1, 3)[valid_points2] / 255.0).astype(np.float32))
     
-    # Crear y procesar nubes de puntos
-    pcd1, pcd2 = create_point_clouds(points1_filtered, points2_filtered, colors1, colors2, voxel_size)
+    # Procesar puntos seleccionados
+    highlighted_points = []
+    scale_x = target_size[0] / img_shape[1]
+    scale_y = target_size[1] / img_shape[0]
     
-    # Estimar normales
-    pcd1, pcd2 = estimate_normals(pcd1, pcd2, voxel_size)
-    
-    # Registrar nubes de puntos
-    T_ransac, T_icp = register_point_clouds(pcd1, pcd2, voxel_size)
-    
-    # Aplicar transformaciones
-    pcd2.transform(T_ransac)
-    pcd2.transform(T_icp)
-    
-    # Ajustes finales de posición
-    center2 = pcd2.get_center()
-    pcd2.translate(-center2)
-    R_180 = pcd2.get_rotation_matrix_from_axis_angle([0, np.pi, 0])
-    pcd2.rotate(R_180, center=(0, 0, 0))
-    center2[2] = center2[2] + 0.4
-    pcd2.translate(center2)
-    
-    # Guardar resultados
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-        pcd_combined = pcd1 + pcd2
-        o3d.io.write_point_cloud(os.path.join(output_dir, "combined_pt.ply"), pcd_combined)
-        o3d.io.write_point_cloud(os.path.join(output_dir, "combined_pcd1.ply"), pcd1)
-        o3d.io.write_point_cloud(os.path.join(output_dir, "combined_pcd2.ply"), pcd2)
+    for x, y in points_2d:
+        # Escalar las coordenadas 2D
+        scaled_x = int(x * scale_x)
+        scaled_y = int(y * scale_y)
+        
+        # Verificar si el punto está dentro de la máscara
+        if (scaled_x < target_size[0] and scaled_y < target_size[1] and 
+            alpha_mask1[scaled_y, scaled_x]):
+            idx = scaled_y * target_size[0] + scaled_x
+            if idx < len(points1.reshape(-1, 3)):
+                point_3d = points1.reshape(-1, 3)[idx]
+                highlighted_points.append(point_3d)
     
     # Visualización
-    vis = setup_visualization()
-    vis.add_geometry(pcd1)
-    vis.add_geometry(pcd2)
+    app = o3d.visualization.gui.Application.instance
+    app.initialize()
+    
+    window = app.create_window("Visualización de Nubes de Puntos", 1280, 720)
+    widget3d = o3d.visualization.gui.SceneWidget()
+    widget3d.scene = o3d.visualization.rendering.Open3DScene(window.renderer)
+    window.add_child(widget3d)
+    
+    # Material para las nubes de puntos
+    material = o3d.visualization.rendering.MaterialRecord()
+    material.shader = "defaultUnlit"
+    material.point_size = 2.0
+    
+    # Añadir nubes de puntos filtradas
+    widget3d.scene.add_geometry("PointCloud1", pcd1, material)
+    widget3d.scene.add_geometry("PointCloud2", pcd2, material)
+    
+    # Añadir esferas para los puntos seleccionados
+    sphere_material = o3d.visualization.rendering.MaterialRecord()
+    sphere_material.base_color = [1.0, 0.0, 0.0, 1.0]
+    sphere_material.shader = "defaultLit"
+    
+    for i, point in enumerate(highlighted_points):
+        sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.05)
+        sphere.translate(point)
+        sphere.paint_uniform_color([1, 0, 0])
+        widget3d.scene.add_geometry(f"Sphere_{i}", sphere, sphere_material)
     
     # Configurar cámara
-    points_combined = np.vstack((np.asarray(pcd1.points), np.asarray(pcd2.points)))
-    center = points_combined.mean(axis=0)
-    max_bound = points_combined.max(axis=0)
-    min_bound = points_combined.min(axis=0)
-    scene_scale = np.linalg.norm(max_bound - min_bound)
+    bounds = pcd1.get_axis_aligned_bounding_box()
+    bounds.extend(pcd2.get_axis_aligned_bounding_box())
+    center = bounds.get_center()
     
-    ctr = vis.get_view_control()
-    camera_params = ctr.convert_to_pinhole_camera_parameters()
-    camera_distance = scene_scale * 1.5
-    camera_pos = center + np.array([0, 0, camera_distance])
-    camera_params.extrinsic = np.array([
-        [1, 0, 0, camera_pos[0]],
-        [0, 1, 0, camera_pos[1]],
-        [0, 0, 1, camera_pos[2]],
-        [0, 0, 0, 1]
-    ])
+    widget3d.setup_camera(60, bounds, center)
+    widget3d.look_at(center, center + [0, 0, 3], [0, -1, 0])
     
-    ctr.convert_from_pinhole_camera_parameters(camera_params)
-    ctr.set_zoom(0.7)
-    ctr.set_front([-0.5, -0.5, -0.5])
-    ctr.set_up([0, -1, 0])
-    ctr.set_lookat(center)
-    
-    vis.run()
-    vis.destroy_window()
+    app.run()
+
+def select_points(image_path):
+    """Permite al usuario seleccionar puntos en la imagen y devuelve sus coordenadas"""
+    original_img = cv2.imread(image_path)
+    if original_img is None:
+        raise FileNotFoundError(f"No se encontró la imagen en {image_path}")
+
+    height, width = original_img.shape[:2]
+    max_dimension = 800
+    scale = min(max_dimension/width, max_dimension/height)
+    new_width = int(width * scale)
+    new_height = int(height * scale)
+
+    img = cv2.resize(original_img, (new_width, new_height))
+    points = []
+    scale_factor = (width/new_width, height/new_height)
+
+    def mouse_callback(event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            original_x = int(x * scale_factor[0])
+            original_y = int(y * scale_factor[1])
+            points.append((original_x, original_y))
+            cv2.circle(img, (x, y), 5, (0, 0, 255), -1)
+            cv2.imshow('Image', img)
+
+    cv2.imshow('Image', img)
+    cv2.setMouseCallback('Image', mouse_callback)
+
+    print("Selecciona los puntos en la imagen (Presiona 'q' cuando termines)")
+    while True:
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
+    return points, (height, width)
 
 def main():
     parser = argparse.ArgumentParser(description='Visualización de profundidad y nube de puntos 3D con máscaras y alineación')
