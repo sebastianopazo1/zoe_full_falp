@@ -133,8 +133,8 @@ class Stitcher:
 
 def load_and_resize_images(folder, new_width):
     images = []
-    filenames = ["0002.jpg", "0003.jpg", "0004.jpg"]
-    #filenames = ["0001.jpg", "0002.jpg", "0003.jpg"]
+    #filenames = ["0002.jpg", "0003.jpg", "0004.jpg"]
+    filenames = ["0001.jpg", "0002.jpg", "0003.jpg"]
     for filename in filenames:
         filepath = os.path.join(folder, filename)
         img = cv2.imread(filepath)

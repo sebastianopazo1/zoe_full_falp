@@ -94,12 +94,13 @@ def process_two_images(image_path1, mask_path1, image_path2, mask_path2, output_
     conf = get_config(model_name, "infer")
     model = build_model(conf).to(DEVICE)
     model.eval()
-
+    """
     # Configurar modelo de pose
     pose_config = './td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'
     pose_checkpoint = './td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
     pose_model = init_pose_model(pose_config, pose_checkpoint, device=DEVICE)
-
+    """
+    
     # Procesar primera imagen
     img1 = Image.open(image_path1).convert("RGB")
     img1 = resize_image(img1, target_size)
