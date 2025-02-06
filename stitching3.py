@@ -187,7 +187,7 @@ def main():
         result_cropped2 = result_cropped[:, :images[0].shape[1]]
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
-        output_path = os.path.join(output_folder, "147_1.jpg")
+        output_path = os.path.join(output_folder, "144_1.jpg")
         cv2.imwrite(output_folder + "vis_match1.jpg", vis12)
         cv2.imwrite(output_folder + "vis_match2.jpg", vis123)
         cv2.imwrite(output_path, result_cropped2)
